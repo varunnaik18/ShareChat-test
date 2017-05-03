@@ -14,12 +14,14 @@ public class PostDataFetch implements Serializable {
     private String requestId;
 
     @SerializedName("id_offset")
-    private int idOffset;
+    private Integer idOffset;
+
+    private UpdateData data;
 
     /**
      * GETTER METHODS
      */
-    public int getIdOffset() {
+    public Integer getIdOffset() {
         return idOffset;
     }
 
@@ -27,15 +29,23 @@ public class PostDataFetch implements Serializable {
         return requestId;
     }
 
+    public UpdateData getData() {
+        return data;
+    }
+
     /**
      * SETTER METHODS
      */
 
-    public void setIdOffset(int idOffset) {
+    public void setIdOffset(Integer idOffset) {
         this.idOffset = idOffset;
     }
 
     public void setRequestId(String requestId) {
         this.requestId = requestId;
+    }
+
+    public void setData(UpdateData data) {
+        this.data = data;
     }
 }

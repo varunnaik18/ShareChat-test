@@ -40,7 +40,7 @@ public class FetchData implements Serializable {
 
     private String postedDate;
 
-    private boolean localImagePresent;
+    private Boolean localImagePresent;
 
     /**
      * GETTER METHODS
@@ -93,7 +93,7 @@ public class FetchData implements Serializable {
         return authorAge;
     }
 
-    public boolean isLocalImagePresent() {
+    public Boolean isLocalImagePresent() {
         return localImagePresent;
     }
 
@@ -149,7 +149,7 @@ public class FetchData implements Serializable {
         this.authorAge = authorAge;
     }
 
-    public void setLocalImagePresent(boolean localImagePresent) {
+    public void setLocalImagePresent(Boolean localImagePresent) {
         this.localImagePresent = localImagePresent;
     }
 }

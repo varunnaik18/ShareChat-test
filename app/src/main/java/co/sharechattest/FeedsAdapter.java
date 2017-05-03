@@ -2,16 +2,22 @@ package co.sharechattest;
 
 import android.content.Context;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import com.squareup.picasso.Picasso;
+
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
 import co.sharechattest.api.model.FetchData;
+import co.sharechattest.app.ShareChatTestApp;
 import co.sharechattest.utils.Check;
 import co.sharechattest.utils.ThreadUtils;
+import co.sharechattest.utils.Utility;
 import co.sharechattest.viewholders.ImagePostHolder;
 import co.sharechattest.viewholders.LoadMoreHolder;
 import co.sharechattest.viewholders.ProgressHolder;
@@ -33,6 +39,10 @@ public class FeedsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     private static final int VIEW_TYPE_LOAD_MORE = 2;
     private static final int VIEW_TYPE_PROGRESS = 3;
 
+    private boolean loadMoreCall = false;
+
+    private RecyclerView recyclerView;
+
     public interface FeedsHandler {
 
         void onImagePostClick(FetchData fetchData);
@@ -44,11 +54,13 @@ public class FeedsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
     private FeedsHandler mFeedsHandler;
 
-    public FeedsAdapter(Context context) {
+    public FeedsAdapter(Context context, RecyclerView recyclerView) {
         super();
 
         this.context = context;
         this.list = new ArrayList<>();
+
+        this.recyclerView = recyclerView;
 
         try {
             this.mFeedsHandler = ((FeedsHandler) context);
@@ -164,15 +176,16 @@ public class FeedsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
     @Override
     public int getItemCount() {
-        return (list != null ? list.size() : 0);
+        return (list != null ? list.size() + 1 : 0);
     }
 
     //Returns the view type of the item at position for the purposes of view recycling.
     @Override
     public int getItemViewType(int position) {
 
-        if (list.get(position) == null)
-            return VIEW_TYPE_PROGRESS;
+        if (isPositionFooter(position)) {
+            return VIEW_TYPE_LOAD_MORE;
+        }
 
         switch (list.get(position).getType()) {
 
@@ -188,13 +201,17 @@ public class FeedsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
     }
 
+    private boolean isPositionFooter(int position) {
+        return position >= list.size();
+    }
+
     private void configureUserProfileView(UserProfileHolder holder, final FetchData fetchData) {
 
         if (fetchData == null)
             return;
 
         holder.tvName.setText(Check.isEmpty(fetchData.getAuthorName()) ? "" : fetchData.getAuthorName());
-        holder.tvAge.setText(Check.isEmpty(fetchData.getAuthorDob()) ? "" : fetchData.getAuthorDob());
+        holder.tvAge.setText(Check.isEmpty(fetchData.getAuthorAge()) ? "" : fetchData.getAuthorAge());
         holder.tvDob.setText(Check.isEmpty(fetchData.getAuthorDob()) ? "" : fetchData.getAuthorDob());
         holder.tvGender.setText(Check.isEmpty(fetchData.getAuthorGender()) ? "" : fetchData.getAuthorGender());
         holder.tvStatus.setText(Check.isEmpty(fetchData.getAuthorStatus()) ? "" : fetchData.getAuthorStatus());
@@ -207,6 +224,24 @@ public class FeedsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             }
         });
 
+        if (fetchData.isLocalImagePresent()) {
+            Picasso.with(context)
+                    .load(new File(Utility.getImagePath(fetchData.getId())))
+                    .resize((int) ShareChatTestApp.getAppResources().getDimension(R.dimen.profile_image_width),
+                            (int) ShareChatTestApp.getAppResources().getDimension(R.dimen.profile_image_width))
+                    .centerCrop()
+                    .into(holder.ivProfileImage);
+        } else {
+
+            if (!Check.isEmpty(fetchData.getProfileUrl()))
+                Picasso.with(context)
+                        .load(fetchData.getProfileUrl())
+                        .resize((int) ShareChatTestApp.getAppResources().getDimension(R.dimen.profile_image_width),
+                                (int) ShareChatTestApp.getAppResources().getDimension(R.dimen.profile_image_width))
+                        .centerCrop()
+                        .into(holder.ivProfileImage);
+        }
+
     }
 
     private void configureImagePostView(ImagePostHolder holder, FetchData fetchData) {
@@ -217,10 +252,75 @@ public class FeedsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         holder.tvAuthorName.setText(Check.isEmpty(fetchData.getAuthorName()) ? "" : fetchData.getAuthorName());
         holder.tvDob.setText(Check.isEmpty(fetchData.getPostedOn()) ? "" : "" + fetchData.getPostedOn());
 
+        if (fetchData.isLocalImagePresent()) {
+            Picasso.with(context)
+                    .load(new File(Utility.getImagePath(fetchData.getId())))
+                    .into(holder.ivImagePost);
+        } else {
+
+            if (!Check.isEmpty(fetchData.getUrl()))
+                Picasso.with(context)
+                        .load(fetchData.getUrl())
+                        .into(holder.ivImagePost);
+        }
     }
 
-    private void configureLoadMoreView(LoadMoreHolder holder) {
+    private void configureLoadMoreView(final LoadMoreHolder holder) {
 
+        holder.btnLoadMore.setVisibility(loadMoreCall ? View.GONE : View.VISIBLE);
+        holder.progressBar.setVisibility(loadMoreCall ? View.VISIBLE : View.GONE);
 
+        holder.btnLoadMore.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mFeedsHandler != null) {
+                    mFeedsHandler.onLoadMoreClick(list.size());
+
+                    loadMoreCall = true;
+
+                    holder.progressBar.setVisibility(View.VISIBLE);
+                    holder.btnLoadMore.setVisibility(View.GONE);
+                }
+            }
+        });
     }
+
+    public void stopLoader() {
+        loadMoreCall = false;
+
+        try {
+            LoadMoreHolder loadMoreHolder = (LoadMoreHolder) recyclerView.findViewHolderForAdapterPosition(list.size());
+            loadMoreHolder.progressBar.setVisibility(View.GONE);
+            loadMoreHolder.btnLoadMore.setVisibility(View.VISIBLE);
+        } catch (Exception e) {
+            Log.e(TAG, e.getLocalizedMessage());
+        }
+    }
+
+//    public void downloadFile(String url) {
+//
+//        FileDownloadService downloadFileService = ApiClient.getInstance().getService(FileDownloadService.class);
+//        Call<ResponseBody> call = downloadFileService.downloadFileWithDynamicUrlSync(url);
+//        call.enqueue(new Callback<ResponseBody>() {
+//            @Override
+//            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+//                if (response.isSuccessful()) {
+//                    Log.d(TAG, "server contacted and has file");
+//
+//                    boolean writtenToDisk = Utility.writeResponseBodyToDisk(response.body(), );
+//
+//                    Log.d(TAG, "file download was a success? " + writtenToDisk);
+//                } else {
+//                    Log.d(TAG, "server contact failed");
+//                }
+//            }
+//
+//            @Override
+//            public void onFailure(Call<ResponseBody> call, Throwable t) {
+//
+//            }
+//        });
+//
+//
+//    }
 }

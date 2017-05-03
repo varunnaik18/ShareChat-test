@@ -1,6 +1,7 @@
 package co.sharechattest.app;
 
 import android.app.Application;
+import android.app.DownloadManager;
 import android.content.Context;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
@@ -24,6 +25,9 @@ public class ShareChatTestApp extends Application {
 
     // Global Instance, used by application
     private static ShareChatTestApp sInstance;
+
+    // Download Manager - app specific
+    DownloadManager mDownloadManager = null;
 
     @Override
     public void onCreate() {
@@ -57,4 +61,13 @@ public class ShareChatTestApp extends Application {
         NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
         return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
+
+    public DownloadManager getDownloadManager() {
+
+        if (mDownloadManager == null)
+            mDownloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+
+        return mDownloadManager;
+    }
+
 }

@@ -17,6 +17,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 
+import java.util.HashMap;
 import java.util.List;
 
 import co.sharechattest.api.callback.ServiceCallback;
@@ -32,6 +33,7 @@ import co.sharechattest.service.DataFetchServiceReceiver;
 import co.sharechattest.utils.Check;
 import co.sharechattest.utils.Constants;
 import co.sharechattest.utils.CustomSwipeRefreshLayout;
+import co.sharechattest.utils.FileDownloadThread;
 import co.sharechattest.utils.ToastUtils;
 import retrofit2.Call;
 
@@ -64,9 +66,7 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
                         int offset = bundle.getInt(Constants.BUNDLE_KEY_OFFSET, 1);
                         boolean callFromRefresh = bundle.getBoolean(Constants.BUNDLE_KEY_FROM_REFRESH, false);
 
-                        List<FetchData> fetchDataList = DBHelper.getFeeds(offset);
-
-                        getAdapter().updateList(fetchDataList, callFromRefresh);
+                        loadFeedsFromDb(offset, callFromRefresh);
 
                         break;
                 }
@@ -74,14 +74,12 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
         }
     };
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_home);
 
         init();
-
     }
 
     private void init() {
@@ -101,7 +99,8 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
                     if (!ShareChatTestApp.isNetworkAvailable())
                         ToastUtils.showToast(R.string.network_error);
 
-                    apiCallForTrendingFeeds(1, true);
+//                    apiCallForTrendingFeeds(1, true);
+                    startService(createCallingIntent(null));
                 }
             });
         }
@@ -114,8 +113,10 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
 
         checkForPermission();
 
-        apiCallForTrendingFeeds(1, false);
-
+        if (DBHelper.isFeedsPresentInTable())
+            loadFeedsFromDb(1, false);
+        else
+            apiCallForTrendingFeeds(1, false);
     }
 
     /**
@@ -131,7 +132,7 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
             getRecycler().setHasFixedSize(true);
             getRecycler().setLayoutManager(layoutManager);
 
-            RecyclerView.Adapter adapter = new FeedsAdapter(HomeActivity.this);
+            RecyclerView.Adapter adapter = new FeedsAdapter(HomeActivity.this, getRecycler());
             getRecycler().setAdapter(adapter);
 
         }
@@ -162,27 +163,56 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
             @Override
             protected void onSuccess(FetchResponse response) {
 
-                if (response.isSuccess())
+                if (response.isSuccess()) {
+
+                    if (callFromRefresh)
+                        DBHelper.deleteAllFromTableFeeds();
+
                     DBHelper.addFeedsToTable(response.getData(), idOffset, callFromRefresh);
-//                    getAdapter().updateList(response.getData(), callFromRefresh);
-                else
+                } else
                     ToastUtils.showToast(response.getError());
 
                 stopSwipeToRefreshLayout();
+
             }
 
             @Override
             protected void onFailure(int code, String message, FetchResponse response) {
                 if (response != null)
-                    ToastUtils.showToast(Check.isEmpty(response.getError()) ? message : response.getError());
+                    ToastUtils.showToast((response == null || Check.isEmpty(response.getError())) ?
+                            (Check.isEmpty(message) ? "Something went wrong" : message) :
+                            response.getError());
 
                 stopSwipeToRefreshLayout();
+
             }
         });
-
     }
 
-    public void stopSwipeToRefreshLayout() {
+    private void loadFeedsFromDb(int offset, boolean callFromRefresh) {
+
+        List<FetchData> fetchDataList = DBHelper.getFeeds(offset);
+
+        getAdapter().updateList(fetchDataList, callFromRefresh);
+
+        if (offset > 1)
+            getAdapter().stopLoader();
+
+        HashMap<String, FetchData> map = DBHelper.getImagesToBeDownloadedList();
+
+        if (map == null || map.size() == 0)
+            return;
+
+        if (ContextCompat.checkSelfPermission(HomeActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED) { // case when permission is not granted
+
+            FileDownloadThread fileDownloadThread = new FileDownloadThread();
+            fileDownloadThread.downloadImages(DBHelper.getImagesToBeDownloadedList());
+            fileDownloadThread.start();
+        }
+    }
+
+    private void stopSwipeToRefreshLayout() {
 
         if (getSwipeToRefresh() != null && getSwipeToRefresh().isRefreshing())
             getSwipeToRefresh().setRefreshing(false);
@@ -203,7 +233,7 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
             ActivityCompat.requestPermissions(HomeActivity.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_MULTIPLE_PERMISSIONS);
     }
 
-    private Intent createCallingIntent(int offsetId) {
+    private Intent createCallingIntent(Integer offsetId) {
         Intent i = new Intent(this, DataFetchService.class);
         DataFetchServiceReceiver receiver = new DataFetchServiceReceiver(new Handler());
         receiver.setListener(HomeActivity.this);
@@ -291,6 +321,7 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
 
                 DBHelper.addFeedsToTable(fetchResponse.getData(), idOffset, false);
 
+                stopSwipeToRefreshLayout();
                 break;
 
             case 1:
@@ -298,9 +329,11 @@ public class HomeActivity extends AppCompatActivity implements ActivityCompat.On
                 String message = resultData.getString(Constants.BUNDLE_KEY_MESSAGE);
                 ToastUtils.showToast(message);
 
+                getAdapter().stopLoader();
+
+                stopSwipeToRefreshLayout();
                 break;
         }
-
     }
 
     @Override

@@ -15,7 +15,7 @@ public interface PostApiInterface {
     @POST("/data")
     Call<FetchResponse> fetchTrendingFeeds(@Body PostDataFetch user);
 
-//    @POST("/update")
-//    Call<FetchResponse> fetchTrendingFeeds(@Body PostDataFetch user);
+    @POST("/update")
+    Call<FetchResponse> updateAuthorInfo(@Body PostDataFetch user);
 
 }

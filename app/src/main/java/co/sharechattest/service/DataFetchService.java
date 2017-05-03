@@ -30,14 +30,13 @@ public class DataFetchService extends IntentService {
 
         final ResultReceiver rec = (ResultReceiver) intent.getParcelableExtra("rec");
 
-        final int idOffset = intent.getExtras().getInt(Constants.BUNDLE_KEY_OFFSET, 0);
-
-        if (Check.isEmpty(idOffset))
-            return;
+        final Integer idOffset = intent.getExtras().getInt(Constants.BUNDLE_KEY_OFFSET, 0);
 
         PostDataFetch postDataFetch = new PostDataFetch();
         postDataFetch.setRequestId(BuildConfig.REQUEST_ID);
-        postDataFetch.setIdOffset(idOffset);
+
+        if (!Check.isEmpty(idOffset))
+            postDataFetch.setIdOffset(idOffset);
 
         PostApiInterface postApiInterface = ApiClient.getInstance().getService(PostApiInterface.class);
         Call<FetchResponse> call = postApiInterface.fetchTrendingFeeds(postDataFetch);
@@ -61,7 +60,7 @@ public class DataFetchService extends IntentService {
             protected void onFailure(int code, String message, FetchResponse response) {
 
                 Bundle b = new Bundle();
-                b.putString(Constants.BUNDLE_KEY_MESSAGE, Check.isEmpty(response.getError()) ? message : response.getError());
+                b.putString(Constants.BUNDLE_KEY_MESSAGE, (response == null || Check.isEmpty(response.getError()))? message : response.getError());
                 rec.send(1, b);
             }
         });

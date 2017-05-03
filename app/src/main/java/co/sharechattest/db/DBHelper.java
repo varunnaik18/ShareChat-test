@@ -7,6 +7,7 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import co.sharechattest.api.model.FetchData;
@@ -63,7 +64,7 @@ public class DBHelper {
         Cursor cursor = null;
         try {
 
-            cursor = CPWrapper.query(TableTrendingFeed.TABLE_NAME, null, null, null,
+            cursor = CPWrapper.query(TableTrendingFeed.TABLE_NAME, null, TableTrendingFeed.COLUMN_SNO + " >= ?", new String[]{ ("" + offset) },
                     TableTrendingFeed.COLUMN_SNO + " ASC");
 
             if (cursor != null && cursor.getCount() > 0) {
@@ -99,5 +100,82 @@ public class DBHelper {
         // return feeds list
         return fetchDataList;
     }
+
+    public static HashMap<String, FetchData> getImagesToBeDownloadedList() {
+
+        HashMap<String, FetchData> imageMap = new HashMap<>();
+        Cursor cursor = null;
+
+        try {
+
+            cursor = CPWrapper.query(TableTrendingFeed.TABLE_NAME, null, TableTrendingFeed.COLUMN_LOCALLY_DOWNLOADED + " = ?",
+                    new String[]{"0"}, null);
+
+            if (cursor != null && cursor.getCount() > 0) {
+
+                while (cursor.moveToNext()) {
+
+                    FetchData fetchData = new FetchData();
+
+                    String id = cursor.getString(cursor.getColumnIndex(TableTrendingFeed.COLUMN_ID));
+
+                    fetchData.setId(id);
+                    fetchData.setType(cursor.getString(cursor.getColumnIndex(TableTrendingFeed.COLUMN_TYPE)));
+                    fetchData.setUrl(cursor.getString(cursor.getColumnIndex(TableTrendingFeed.COLUMN_URL)));
+                    fetchData.setProfileUrl(cursor.getString(cursor.getColumnIndex(TableTrendingFeed.COLUMN_PROFILE_URL)));
+
+                    imageMap.put(id, fetchData);
+                }
+            }
+        } catch (Exception e) {
+
+            Log.e(TAG, e.getMessage());
+        } finally {
+
+            CursorUtils.close(cursor);
+        }
+
+        return imageMap;
+    }
+
+    public static boolean isFeedsPresentInTable() {
+
+        Cursor cursor = null;
+        int count = 0;
+
+        try {
+
+            String[] projection = {TableTrendingFeed.COLUMN_ID};
+
+            cursor = CPWrapper.query(TableTrendingFeed.TABLE_NAME, projection, null, null, null);
+
+            if (cursor != null)
+                count = cursor.getCount();
+
+        } catch (Exception e) {
+
+            Log.w(TAG, e.getLocalizedMessage());
+        } finally {
+
+            CursorUtils.close(cursor);
+        }
+
+        return count > 0;
+    }
+
+    public static boolean updateBookTagsString(String id) {
+
+        ContentValues values = new ContentValues();
+
+        values.put(TableTrendingFeed.COLUMN_LOCALLY_DOWNLOADED, 1);
+
+        return CPWrapper.update(TableTrendingFeed.TABLE_NAME, values, TableTrendingFeed.COLUMN_ID + " = ?", new String[]{id});
+    }
+
+    public static void deleteAllFromTableFeeds() {
+
+        CPWrapper.EmptyTable(TableTrendingFeed.TABLE_NAME);
+    }
+
 
 }

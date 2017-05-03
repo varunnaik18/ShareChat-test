@@ -1,49 +1,61 @@
 package co.sharechattest;
 
-import android.Manifest;
+import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
+import android.support.annotation.IdRes;
+import android.support.design.widget.CollapsingToolbarLayout;
 import android.support.v7.app.AppCompatActivity;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.View;
 import android.widget.Button;
 import android.widget.DatePicker;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 
 import com.squareup.picasso.Picasso;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
 
+import co.sharechattest.api.callback.ServiceCallback;
+import co.sharechattest.api.client.ApiClient;
 import co.sharechattest.api.model.FetchData;
+import co.sharechattest.api.model.FetchResponse;
+import co.sharechattest.api.model.PostDataFetch;
+import co.sharechattest.api.model.UpdateData;
+import co.sharechattest.api.service.PostApiInterface;
+import co.sharechattest.app.ShareChatTestApp;
 import co.sharechattest.utils.Check;
 import co.sharechattest.utils.Constants;
 import co.sharechattest.utils.ToastUtils;
+import co.sharechattest.utils.Utility;
+import retrofit2.Call;
 
-public class ProfileDetailsActivity extends AppCompatActivity implements ActivityCompat.OnRequestPermissionsResultCallback {
+public class ProfileDetailsActivity extends AppCompatActivity implements TextWatcher, RadioGroup.OnCheckedChangeListener {
 
-    private static final int REQUEST_CODE_MULTIPLE_PERMISSIONS = 124;
-
+    private FetchData mFetchData = null;
     Calendar myCalendar = Calendar.getInstance();
+
+    private boolean mChangesMade = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profile_details);
 
-        init();
-
         // Listen to intent received and assign values
         receiveBundle(getIntent());
+
+        init();
 
     }
 
@@ -58,12 +70,20 @@ public class ProfileDetailsActivity extends AppCompatActivity implements Activit
             }
         });
 
-        getIbEditImage().setOnClickListener(new View.OnClickListener() {
+        getBtnSave().setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                checkForPermission();
+                updateDataForUser();
             }
         });
+
+        getEtStatus().addTextChangedListener(this);
+        getEtContact().addTextChangedListener(this);
+        getEtAge().addTextChangedListener(this);
+        getTvDob().addTextChangedListener(this);
+
+        getRadioGroup().setOnCheckedChangeListener(this);
+
     }
 
     private void receiveBundle(Intent intent) {
@@ -75,14 +95,19 @@ public class ProfileDetailsActivity extends AppCompatActivity implements Activit
 
         Object receivedObject = bundle.getSerializable(Constants.BUNDLE_KEY_PROFILE_DATA);
 
-        FetchData fetchData = (FetchData) receivedObject;
+        mFetchData = (FetchData) receivedObject;
 
-        getTvDob().setText(fetchData.getAuthorDob());
-        getEtAge().setText(fetchData.getAuthorAge());
-        getEtContact().setText(fetchData.getAuthorContact());
-        getEtStatus().setText(fetchData.getAuthorStatus());
+        if (mFetchData == null)
+            return;
 
-        switch (fetchData.getAuthorGender()) {
+        getCollapsingToolbarLayout().setTitle(mFetchData.getAuthorName());
+
+        getTvDob().setText(mFetchData.getAuthorDob());
+        getEtAge().setText(mFetchData.getAuthorAge());
+        getEtContact().setText(mFetchData.getAuthorContact());
+        getEtStatus().setText(mFetchData.getAuthorStatus());
+
+        switch (mFetchData.getAuthorGender()) {
 
             case "male":
                 getRbMale().setChecked(true);
@@ -93,28 +118,98 @@ public class ProfileDetailsActivity extends AppCompatActivity implements Activit
                 break;
         }
 
-        if (!fetchData.isLocalImagePresent() && !Check.isEmpty(fetchData.getProfileUrl())) {
-            Picasso.with(this).load(fetchData.getProfileUrl()).into(getIvBackdrop());
-        }
-    }
-
-    private void checkForPermission() {
-
-        if (ContextCompat.checkSelfPermission(ProfileDetailsActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
-                PackageManager.PERMISSION_GRANTED) { // case when permission is not granted
-
-            askPermission();
+        if (mFetchData.isLocalImagePresent()) {
+            Picasso.with(this)
+                    .load(new File(Utility.getImagePath(mFetchData.getId())))
+                    .into(getIvBackdrop());
         } else {
 
-
+            if (!Check.isEmpty(mFetchData.getProfileUrl()))
+                Picasso.with(this)
+                        .load(mFetchData.getProfileUrl())
+                        .into(getIvBackdrop());
         }
     }
 
-    public void askPermission() {
+    private void updateDataForUser() {
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            ActivityCompat.requestPermissions(ProfileDetailsActivity.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_MULTIPLE_PERMISSIONS);
+        if (!ShareChatTestApp.isNetworkAvailable()) {
+            ToastUtils.showToast(R.string.network_error);
+            return;
+        }
+
+        String dob = getTvDob().getText().toString();
+        String contact = getEtContact().getText().toString();
+        String status = getEtStatus().getText().toString();
+        String gender = "";
+
+        if (getRbMale().isChecked())
+            gender = "male";
+        else if (getRbFemale().isChecked())
+            gender = "female";
+
+        if (mFetchData == null) {
+            ToastUtils.showToast("Something went wrong, please try again later");
+            return;
+        }
+
+        if (Check.isEmpty(dob) || Check.isEmpty(contact) || Check.isEmpty(status) || Check.isEmpty(gender)) {
+            ToastUtils.showToast("All fields are mandatory");
+            return;
+        }
+
+        UpdateData updateData = new UpdateData();
+        updateData.setId(mFetchData.getId());
+        updateData.setAuthorName(mFetchData.getAuthorName());
+        updateData.setType(mFetchData.getType());
+        updateData.setProfileUrl(mFetchData.getProfileUrl());
+        updateData.setAuthorDob(dob);
+        updateData.setAuthorStatus(status);
+        updateData.setAuthorGender(gender);
+        updateData.setAuthorContact(contact);
+
+        PostDataFetch data = new PostDataFetch();
+        data.setRequestId(BuildConfig.REQUEST_ID);
+        data.setData(updateData);
+
+        PostApiInterface postApiInterface = ApiClient.getInstance().getService(PostApiInterface.class);
+        Call<FetchResponse> call = postApiInterface.updateAuthorInfo(data);
+        call.enqueue(new ServiceCallback<FetchResponse>() {
+            @Override
+            protected void onSuccess(FetchResponse response) {
+
+                if (response.isSuccess())
+                    ToastUtils.showToast("Profile updated Successfully");
+                else
+                    ToastUtils.showToast(response.getError());
+
+                ProfileDetailsActivity.this.finish();
+
+            }
+
+            @Override
+            protected void onFailure(int code, String message, FetchResponse response) {
+                if (response != null)
+                    ToastUtils.showToast(Check.isEmpty(response.getError()) ? message : response.getError());
+            }
+        });
+
     }
+
+    private void showStopDownloadingDialog(String message) {
+
+        new AlertDialog.Builder(ProfileDetailsActivity.this).setMessage("Confirm").setCancelable(false)
+                .setMessage(message)
+                .setPositiveButton("YES", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+
+                        ProfileDetailsActivity.this.finish();
+                    }
+                })
+                .setNegativeButton("NO", null).show();
+    }
+
 
     DatePickerDialog.OnDateSetListener date = new DatePickerDialog.OnDateSetListener() {
 
@@ -135,34 +230,6 @@ public class ProfileDetailsActivity extends AppCompatActivity implements Activit
         }
 
     };
-
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-
-        if (requestCode == REQUEST_CODE_MULTIPLE_PERMISSIONS
-                && grantResults.length > 0) {
-
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-
-
-            } else if (grantResults[0] == PackageManager.PERMISSION_DENIED) {
-
-                if (ActivityCompat.shouldShowRequestPermissionRationale(ProfileDetailsActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-
-                    // user has denied permission
-                    // or he has been doing this from last multiple times
-                    ToastUtils.showToastLong(R.string.error_download_permission_denied);
-                } else {
-
-                    //Never ask again selected, or device policy prohibits the app from having that permission.
-                    //So, disable that feature, or fall back to another situation...
-                    ToastUtils.showToastLong(R.string.error_download_permission_never_ask);
-                }
-            }
-        }
-    }
 
     private TextView getTvDob() {
         return (TextView) findViewById(R.id.tvDOb);
@@ -203,8 +270,43 @@ public class ProfileDetailsActivity extends AppCompatActivity implements Activit
         return (ImageView) findViewById(R.id.ivBackdrop);
     }
 
-    private ImageButton getIbEditImage() {
+    private RadioGroup getRadioGroup() {
+        return (RadioGroup) findViewById(R.id.radioGroup);
+    }
 
-        return (ImageButton) findViewById(R.id.ibEditImage);
+    private CollapsingToolbarLayout getCollapsingToolbarLayout() {
+
+        return (CollapsingToolbarLayout) findViewById(R.id.collapsing_toolbar);
+
+    }
+
+
+    @Override
+    public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+    }
+
+    @Override
+    public void onTextChanged(CharSequence s, int start, int before, int count) {
+        mChangesMade = true;
+    }
+
+    @Override
+    public void afterTextChanged(Editable s) {
+
+    }
+
+    @Override
+    public void onCheckedChanged(RadioGroup group, @IdRes int checkedId) {
+        mChangesMade = true;
+    }
+
+
+    @Override
+    public void onBackPressed() {
+        if (mChangesMade)
+            showStopDownloadingDialog("Are you sure you want to exit without saving your changes?");
+        else
+            super.onBackPressed();
     }
 }

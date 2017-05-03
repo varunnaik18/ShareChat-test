@@ -22,13 +22,14 @@
             <ImageView
                 android:id="@+id/ivImagePost"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/image_post_height" />
+                android:layout_height="@dimen/image_post_height"
+                android:scaleType="centerCrop"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_alignParentTop="true"
-                android:background="@color/white"
+                android:background="@color/grey"
                 android:orientation="vertical"
                 android:padding="10dp">
 
