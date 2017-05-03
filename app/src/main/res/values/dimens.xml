@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <dimen name="actionbar_title_text_size">22sp</dimen>
+
+    <dimen name="profile_name_text_size">17sp</dimen>
+    <dimen name="profile_age_text_size">15sp</dimen>
+
+    <dimen name="refresh_view_offset">90dp</dimen>
+    <dimen name="profile_image_width">100dp</dimen>
+
+    <dimen name="image_post_height">250dp</dimen>
+</resources>
